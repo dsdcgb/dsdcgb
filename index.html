@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>달서디지털체험센터 체험부스 방명록</title>
+  <style>
+    :root { --radius: 16px; }
+    body{font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Noto Sans KR',sans-serif;margin:0;background:#f6f7fb;color:#111}
+    .wrap{max-width:560px;margin:0 auto;padding:24px}
+    .card{background:#fff;border-radius:var(--radius);box-shadow:0 8px 24px rgba(0,0,0,.06);padding:24px}
+    h1{font-size:20px;margin:0 0 4px}
+    .subtitle{color:#666;margin:0 0 16px;font-size:14px}
+    .field{margin:16px 0}
+    .label{display:block;font-weight:600;margin-bottom:8px}
+    .select, .button {width:100%;border-radius:12px;border:1px solid #d7d9e0;padding:14px 12px;font-size:16px;background:#fff}
+    .button{background:#111;color:#fff;cursor:pointer;border:none}
+    .button[disabled]{opacity:.6;cursor:not-allowed}
+    .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .chip{border:1px solid #d7d9e0;border-radius:999px;padding:10px 12px;background:#fff;text-align:center;cursor:pointer;user-select:none}
+    .chip.selected{background:#111;color:#fff;border-color:#111}
+    .note{font-size:12px;color:#666;margin-top:12px}
+    .footer{margin-top:20px;font-size:12px;color:#999;text-align:center}
+    .success{background:#e8f7ec;color:#137a31;border:1px solid #bde3c7;padding:12px;border-radius:12px;margin-top:12px;display:none}
+    .error{background:#fdeaea;color:#b42318;border:1px solid #f5c2c0;padding:12px;border-radius:12px;margin-top:12px;display:none}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>달서디지털체험센터 체험부스 방명록</h1>
+      <p class="subtitle">방문객 현황 집계를 위해 거주지역과 연령대를 선택해 주세요.</p>
+
+      <form id="guestbookForm">
+        <div class="field">
+          <label for="region" class="label">거주지역</label>
+          <select id="region" class="select" required>
+            <option value="" disabled selected>선택하세요</option>
+            <option value="달서구">달서구</option>
+            <option value="달서구외">달서구외</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <span class="label">연령대</span>
+          <div id="ages" class="seg" role="radiogroup" aria-label="연령대">
+            <!-- 버튼형 라디오 -->
+          </div>
+        </div>
+
+        <button type="submit" id="submitBtn" class="button">등록</button>
+        <div id="ok" class="success">등록되었습니다. 참여해주셔서 감사합니다!</div>
+        <div id="fail" class="error">전송에 문제가 발생했습니다. 다시 시도해 주세요.</div>
+        <p class="note">입력하신 정보는 통계 집계 목적에만 사용됩니다. (개인식별정보 수집 없음)</p>
+      </form>
+    </div>
+    <p class="footer">© 달서디지털체험센터</p>
+  </div>
+
+  <script>
+    // == 설정: 아래에 Google Apps Script Web App URL을 붙여넣으세요 ==
+    const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxM6rfoG9HBa4DJPE35lGCxqiS9YXM9_vdknhBAV7V-9SK00rTrusBdfJU_3BIeB55EBQ/exec";
+
+    // 연령대 버튼 구성
+    const ageOptions = ["유아","초등","중등","고등","성인"];
+    const agesEl = document.getElementById('ages');
+    let selectedAge = null;
+    ageOptions.forEach(label=>{
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.textContent = label;
+      b.setAttribute('role','radio');
+      b.setAttribute('aria-checked','false');
+      b.addEventListener('click',()=>{
+        selectedAge = label;
+        document.querySelectorAll('.chip').forEach(c=>{c.classList.remove('selected');c.setAttribute('aria-checked','false')});
+        b.classList.add('selected');
+        b.setAttribute('aria-checked','true');
+      });
+      agesEl.appendChild(b);
+    });
+
+    // 제출 처리
+    const form = document.getElementById('guestbookForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const ok = document.getElementById('ok');
+    const fail = document.getElementById('fail');
+
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      ok.style.display = 'none';
+      fail.style.display = 'none';
+
+      const region = document.getElementById('region').value;
+      if(!region){
+        alert('거주지역을 선택해 주세요.');
+        return;
+      }
+      if(!selectedAge){
+        alert('연령대를 선택해 주세요.');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = '전송 중…';
+
+      // 전송 payload (방문일자/시간은 서버에서 결정)
+      const payload = {
+        region,
+        age: selectedAge,
+        userAgent: navigator.userAgent
+      };
+
+      try{
+        // Apps Script의 CORS 제약을 감안해 no-cors 모드 사용.
+        // 응답 본문은 읽지 않지만, 전송 성공 시 사용자에게 즉시 확인 메시지를 표시합니다.
+        await fetch(GAS_WEBAPP_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        ok.style.display = 'block';
+        form.reset();
+        document.querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));
+        selectedAge = null;
+      } catch(err){
+        console.error(err);
+        fail.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = '등록';
+      }
+    });
+  </script>
+</body>
+</html>
