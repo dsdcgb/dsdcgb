@@ -56,7 +56,51 @@
 
   <script>
     // == 설정: 아래에 Google Apps Script Web App URL을 붙여넣으세요 ==
-    const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxM6rfoG9HBa4DJPE35lGCxqiS9YXM9_vdknhBAV7V-9SK00rTrusBdfJU_3BIeB55EBQ/exec";
+    const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxJSXNyG_X5A-5UyXOvQYVuoUrom3sJ7bFqERyWAOjfBHM4_oNt2fNu9MoJetJt4LfbtQ/exec";
+
+    // -------- 간단한 Client Info 수집 (userAgent 전체가 아니라 요약값만) --------
+    async function getClientInfo() {
+      const info = { device: 'unknown', os: 'unknown', browser: 'unknown' };
+
+      try {
+        // 1) User-Agent Client Hints 우선 사용 (Chromium 계열에서 동작)
+        if (navigator.userAgentData) {
+          info.device = navigator.userAgentData.mobile ? 'mobile' : 'desktop';
+          const uaData = await navigator.userAgentData.getHighEntropyValues(
+            ['platform','fullVersionList']
+          );
+          if (uaData && uaData.platform) info.os = uaData.platform; // e.g., 'Android', 'Windows', 'iOS', 'macOS'
+          const brands = (uaData && uaData.fullVersionList) || navigator.userAgentData.brands || [];
+          // Chromium/브랜드 토큰 중 Chromium이 아닌 첫 항목을 선호
+          const b = brands.find(b => !/Chromium/i.test(b.brand)) || brands[0];
+          if (b && b.brand) info.browser = b.brand;
+          return info;
+        }
+      } catch (e) {
+        // no-op: 아래 UA 파싱으로 폴백
+      }
+
+      // 2) 폴백: 전통 UA 문자열에서 최소한의 라벨만 추출
+      const ua = navigator.userAgent || '';
+      // device
+      info.device = /Mobile|Android|iPhone|iPad|iPod|IEMobile|BlackBerry/i.test(ua) ? 'mobile' : 'desktop';
+
+      // os
+      if (/Android/i.test(ua)) info.os = 'Android';
+      else if (/(iPhone|iPad|iPod)/i.test(ua)) info.os = 'iOS';
+      else if (/Windows/i.test(ua)) info.os = 'Windows';
+      else if (/Macintosh|Mac OS X/i.test(ua)) info.os = 'macOS';
+      else if (/Linux/i.test(ua)) info.os = 'Linux';
+
+      // browser
+      if (/SamsungBrowser/i.test(ua)) info.browser = 'Samsung Internet';
+      else if (/Edg\//i.test(ua)) info.browser = 'Edge';
+      else if (/Chrome\//i.test(ua)) info.browser = 'Chrome';
+      else if (/Firefox\//i.test(ua)) info.browser = 'Firefox';
+      else if (/Safari\//i.test(ua)) info.browser = 'Safari';
+
+      return info;
+    }
 
     // 거주지역 버튼 구성
     const regionOptions = ["달서구","달서구외"];
@@ -121,16 +165,16 @@
       submitBtn.disabled = true;
       submitBtn.textContent = '전송 중…';
 
-      // 전송 payload (방문일자/시간은 서버에서 결정)
-      const payload = {
-        region: selectedRegion,
-        age: selectedAge,
-        userAgent: navigator.userAgent
-      };
-
       try{
+        const client = await getClientInfo(); // 간단 요약 정보만 수집
+        // 전송 payload (방문일자/시간은 서버에서 결정)
+        const payload = {
+          region: selectedRegion,
+          age: selectedAge,
+          client // { device, os, browser }
+        };
+
         // Apps Script의 CORS 제약을 감안해 no-cors 모드 사용.
-        // 응답 본문은 읽지 않지만, 전송 성공 시 사용자에게 즉시 확인 메시지를 표시합니다.
         await fetch(GAS_WEBAPP_URL, {
           method: 'POST',
           mode: 'no-cors',
