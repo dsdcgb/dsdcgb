@@ -58,49 +58,89 @@
     // == 설정: 아래에 Google Apps Script Web App URL을 붙여넣으세요 ==
     const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwysbN00pJoAjLoKiUFLRfPdGaL-AwTiFdu7PjiNOlt5MTXSLV9KcTZ5v1-Ca4gZ55YpQ/exec";
 
-    // -------- 간단한 Client Info 수집 (userAgent 전체가 아니라 요약값만) --------
+    // ─────────────────── 간단한 Client Info (브라우저 정밀 식별) ───────────────────
     async function getClientInfo() {
       const info = { device: 'unknown', os: 'unknown', browser: 'unknown' };
-
-      try {
-        // 1) User-Agent Client Hints 우선 사용 (Chromium 계열에서 동작)
-        if (navigator.userAgentData) {
-          info.device = navigator.userAgentData.mobile ? 'mobile' : 'desktop';
-          const uaData = await navigator.userAgentData.getHighEntropyValues(
-            ['platform','fullVersionList']
-          );
-          if (uaData && uaData.platform) info.os = uaData.platform; // e.g., 'Android', 'Windows', 'iOS', 'macOS'
-          const brands = (uaData && uaData.fullVersionList) || navigator.userAgentData.brands || [];
-          // Chromium/브랜드 토큰 중 Chromium이 아닌 첫 항목을 선호
-          const b = brands.find(b => !/Chromium/i.test(b.brand)) || brands[0];
-          if (b && b.brand) info.browser = b.brand;
-          return info;
-        }
-      } catch (e) {
-        // no-op: 아래 UA 파싱으로 폴백
-      }
-
-      // 2) 폴백: 전통 UA 문자열에서 최소한의 라벨만 추출
       const ua = navigator.userAgent || '';
-      // device
-      info.device = /Mobile|Android|iPhone|iPad|iPod|IEMobile|BlackBerry/i.test(ua) ? 'mobile' : 'desktop';
 
-      // os
+      // device & OS (공통 선산정)
+      info.device = /Mobile|Android|iPhone|iPad|iPod|IEMobile|BlackBerry/i.test(ua) ? 'mobile' : 'desktop';
       if (/Android/i.test(ua)) info.os = 'Android';
       else if (/(iPhone|iPad|iPod)/i.test(ua)) info.os = 'iOS';
       else if (/Windows/i.test(ua)) info.os = 'Windows';
       else if (/Macintosh|Mac OS X/i.test(ua)) info.os = 'macOS';
       else if (/Linux/i.test(ua)) info.os = 'Linux';
 
-      // browser
-      if (/SamsungBrowser/i.test(ua)) info.browser = 'Samsung Internet';
-      else if (/Edg\//i.test(ua)) info.browser = 'Edge';
-      else if (/Chrome\//i.test(ua)) info.browser = 'Chrome';
-      else if (/Firefox\//i.test(ua)) info.browser = 'Firefox';
-      else if (/Safari\//i.test(ua)) info.browser = 'Safari';
+      // UA-CH: 가짜 브랜드/Chromium 제거 후 선택
+      try {
+        // Brave 특수 처리
+        if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
+          const isBrave = await navigator.brave.isBrave();
+          if (isBrave) info.browser = 'Brave';
+        }
+
+        if (!info.browser && navigator.userAgentData) {
+          const invalidBrand = /^(Chromium|Not[\.\?\s_\/-]?A[\s_\/-]?Brand)$/i;
+          const uaBrands = navigator.userAgentData.brands || [];
+          const high = await (navigator.userAgentData.getHighEntropyValues?.(['fullVersionList']) || Promise.resolve({}));
+          const brandNames = (high.fullVersionList || uaBrands).map(x => x.brand).filter(Boolean);
+          const cleaned = brandNames.filter(n => !invalidBrand.test(n));
+
+          const prefer = cleaned.find(n => /Samsung|Edge|Chrome|Opera|OPR|Whale|YaBrowser|Vivaldi|Brave|Safari/i.test(n));
+          const picked = prefer || cleaned[0];
+          if (picked) info.browser = normalizeBrand(picked);
+        }
+      } catch (e) { /* 폴백으로 진행 */ }
+
+      // 폴백: UA 문자열에서 확실히
+      if (!info.browser || /Not.*Brand/i.test(info.browser)) {
+        info.browser = detectBrowserFromUA(ua);
+      }
 
       return info;
     }
+
+    function normalizeBrand(name) {
+      const n = (name || '').toLowerCase();
+      if (n.includes('samsung')) return 'Samsung Internet';
+      if (n.includes('google chrome') || n === 'chrome') return 'Chrome';
+      if (n.includes('edge')) return 'Edge';
+      if (n.includes('whale')) return 'Whale';
+      if (n.includes('yabrowser')) return 'Yandex';
+      if (n.includes('vivaldi')) return 'Vivaldi';
+      if (n.includes('brave')) return 'Brave';
+      if (n.includes('opera') || n.includes('opr')) return 'Opera';
+      if (n.includes('safari')) return 'Safari';
+      return name || 'Unknown';
+    }
+
+    function detectBrowserFromUA(ua) {
+      // 일부 인앱 브라우저
+      if (/KAKAOTALK/i.test(ua)) return 'Kakao In-App';
+      if (/NAVER\(inapp/i.test(ua)) return 'Naver In-App';
+      if (/FBAN|FBAV/i.test(ua)) return 'Facebook In-App';
+      if (/Instagram/i.test(ua)) return 'Instagram In-App';
+
+      // iOS (WebKit) 토큰
+      if (/CriOS\//i.test(ua)) return 'Chrome';
+      if (/FxiOS\//i.test(ua)) return 'Firefox';
+      if (/EdgiOS\//i.test(ua)) return 'Edge';
+      if (/OPiOS\//i.test(ua) || /OPT\//i.test(ua)) return 'Opera';
+      if (/(Version\/[\d\.]+ )?Safari\//i.test(ua) && /iPhone|iPad|iPod/i.test(ua)) return 'Safari';
+
+      // Android/데스크톱
+      if (/SamsungBrowser\//i.test(ua)) return 'Samsung Internet';
+      if (/EdgA?\//i.test(ua)) return 'Edge';           // Edg/ or EdgA/
+      if (/OPR\//i.test(ua) || /Opera\//i.test(ua)) return 'Opera';
+      if (/Whale\//i.test(ua)) return 'Whale';
+      if (/YaBrowser\//i.test(ua)) return 'Yandex';
+      if (/Vivaldi\//i.test(ua)) return 'Vivaldi';
+      if (/Firefox\//i.test(ua)) return 'Firefox';
+      if (/Chrome\//i.test(ua)) return 'Chrome';
+      if (/Safari\//i.test(ua)) return 'Safari';
+      return 'Unknown';
+    }
+    // ───────────────────────────────────────────────────────────────────────────
 
     // 거주지역 버튼 구성
     const regionOptions = ["달서구","달서구외"];
