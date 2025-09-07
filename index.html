@@ -129,7 +129,7 @@
       if (/(Version\/[\d\.]+ )?Safari\//i.test(ua) && /iPhone|iPad|iPod/i.test(ua)) return 'Safari';
 
       // Android/데스크톱
-      if (/SamsungBrowser\//i.test(ua)) return 'Samsung Internet';
+      if (/SamsungBrowser(?=\/|\s|$)/i.test(ua)) return 'Samsung Internet';
       if (/EdgA?\//i.test(ua)) return 'Edge';           // Edg/ or EdgA/
       if (/OPR\//i.test(ua) || /Opera\//i.test(ua)) return 'Opera';
       if (/Whale\//i.test(ua)) return 'Whale';
