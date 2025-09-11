@@ -13,11 +13,11 @@
     .subtitle{color:#666;margin:0 0 16px;font-size:14px}
     .field{margin:16px 0}
     .label{display:block;font-weight:600;margin-bottom:8px}
-    .select, .button {width:100%;border-radius:12px;border:1px solid #d7d9e0;padding:14px 12px;font-size:16px;background:#fff}
-    .button{background:#111;color:#fff;cursor:pointer;border:none}
+    .button {width:100%;border-radius:12px;border:1px solid #d7d9e0;padding:14px 12px;font-size:16px;background:#111;color:#fff;cursor:pointer;border:none}
     .button[disabled]{opacity:.6;cursor:not-allowed}
     .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
     .seg2{grid-template-columns:repeat(2,1fr)}
+    .seg5{grid-template-columns:repeat(5,1fr)}
     .chip{border:1px solid #d7d9e0;border-radius:999px;padding:10px 12px;background:#fff;text-align:center;cursor:pointer;user-select:none}
     .chip.selected{background:#111;color:#fff;border-color:#111}
     .note{font-size:12px;color:#666;margin-top:12px}
@@ -30,7 +30,7 @@
   <div class="wrap">
     <div class="card">
       <h1>달서디지털체험센터 체험부스 방명록</h1>
-      <p class="subtitle">방문객 현황 집계를 위해 거주지역과 연령대를 선택해 주세요.</p>
+      <p class="subtitle">방문객 현황 집계를 위해 거주지역과 참여인원을 선택해 주세요.</p>
 
       <form id="guestbookForm">
         <div class="field">
@@ -39,10 +39,8 @@
         </div>
 
         <div class="field">
-          <span class="label">연령대</span>
-          <div id="ages" class="seg" role="radiogroup" aria-label="연령대">
-            <!-- 버튼형 라디오 -->
-          </div>
+          <span class="label">참여인원 (1~10명)</span>
+          <div id="counts" class="seg seg5" role="radiogroup" aria-label="참여인원"></div>
         </div>
 
         <button type="submit" id="submitBtn" class="button">등록</button>
@@ -56,93 +54,9 @@
 
   <script>
     // == 설정: 아래에 Google Apps Script Web App URL을 붙여넣으세요 ==
-    const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwysbN00pJoAjLoKiUFLRfPdGaL-AwTiFdu7PjiNOlt5MTXSLV9KcTZ5v1-Ca4gZ55YpQ/exec";
+    const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwl2ZWa7rIMdgWflgHLT-vP0yBcVBbyGNfOcAhnvMHDR7FQQp6I7b3OcI_dauF-uRnomA/exec";
 
-    // ─────────────────── 간단한 Client Info (브라우저 정밀 식별) ───────────────────
-    async function getClientInfo() {
-      const info = { device: 'unknown', os: 'unknown', browser: 'unknown' };
-      const ua = navigator.userAgent || '';
-
-      // device & OS (공통 선산정)
-      info.device = /Mobile|Android|iPhone|iPad|iPod|IEMobile|BlackBerry/i.test(ua) ? 'mobile' : 'desktop';
-      if (/Android/i.test(ua)) info.os = 'Android';
-      else if (/(iPhone|iPad|iPod)/i.test(ua)) info.os = 'iOS';
-      else if (/Windows/i.test(ua)) info.os = 'Windows';
-      else if (/Macintosh|Mac OS X/i.test(ua)) info.os = 'macOS';
-      else if (/Linux/i.test(ua)) info.os = 'Linux';
-
-      // UA-CH: 가짜 브랜드/Chromium 제거 후 선택
-      try {
-        // Brave 특수 처리
-        if (navigator.brave && typeof navigator.brave.isBrave === 'function') {
-          const isBrave = await navigator.brave.isBrave();
-          if (isBrave) info.browser = 'Brave';
-        }
-
-        if (!info.browser && navigator.userAgentData) {
-          const invalidBrand = /^(Chromium|Not[\.\?\s_\/-]?A[\s_\/-]?Brand)$/i;
-          const uaBrands = navigator.userAgentData.brands || [];
-          const high = await (navigator.userAgentData.getHighEntropyValues?.(['fullVersionList']) || Promise.resolve({}));
-          const brandNames = (high.fullVersionList || uaBrands).map(x => x.brand).filter(Boolean);
-          const cleaned = brandNames.filter(n => !invalidBrand.test(n));
-
-          const prefer = cleaned.find(n => /Samsung|Edge|Chrome|Opera|OPR|Whale|YaBrowser|Vivaldi|Brave|Safari/i.test(n));
-          const picked = prefer || cleaned[0];
-          if (picked) info.browser = normalizeBrand(picked);
-        }
-      } catch (e) { /* 폴백으로 진행 */ }
-
-      // 폴백: UA 문자열에서 확실히
-      if (!info.browser || /Not.*Brand/i.test(info.browser)) {
-        info.browser = detectBrowserFromUA(ua);
-      }
-
-      return info;
-    }
-
-    function normalizeBrand(name) {
-      const n = (name || '').toLowerCase();
-      if (n.includes('samsung')) return 'Samsung Internet';
-      if (n.includes('google chrome') || n === 'chrome') return 'Chrome';
-      if (n.includes('edge')) return 'Edge';
-      if (n.includes('whale')) return 'Whale';
-      if (n.includes('yabrowser')) return 'Yandex';
-      if (n.includes('vivaldi')) return 'Vivaldi';
-      if (n.includes('brave')) return 'Brave';
-      if (n.includes('opera') || n.includes('opr')) return 'Opera';
-      if (n.includes('safari')) return 'Safari';
-      return name || 'Unknown';
-    }
-
-    function detectBrowserFromUA(ua) {
-      // 일부 인앱 브라우저
-      if (/KAKAOTALK/i.test(ua)) return 'Kakao In-App';
-      if (/NAVER\(inapp/i.test(ua)) return 'Naver In-App';
-      if (/FBAN|FBAV/i.test(ua)) return 'Facebook In-App';
-      if (/Instagram/i.test(ua)) return 'Instagram In-App';
-
-      // iOS (WebKit) 토큰
-      if (/CriOS\//i.test(ua)) return 'Chrome';
-      if (/FxiOS\//i.test(ua)) return 'Firefox';
-      if (/EdgiOS\//i.test(ua)) return 'Edge';
-      if (/OPiOS\//i.test(ua) || /OPT\//i.test(ua)) return 'Opera';
-      if (/(Version\/[\d\.]+ )?Safari\//i.test(ua) && /iPhone|iPad|iPod/i.test(ua)) return 'Safari';
-
-      // Android/데스크톱
-      if (/SamsungBrowser(?=\/|\s|$)/i.test(ua)) return 'Samsung Internet';
-      if (/EdgA?\//i.test(ua)) return 'Edge';           // Edg/ or EdgA/
-      if (/OPR\//i.test(ua) || /Opera\//i.test(ua)) return 'Opera';
-      if (/Whale\//i.test(ua)) return 'Whale';
-      if (/YaBrowser\//i.test(ua)) return 'Yandex';
-      if (/Vivaldi\//i.test(ua)) return 'Vivaldi';
-      if (/Firefox\//i.test(ua)) return 'Firefox';
-      if (/Chrome\//i.test(ua)) return 'Chrome';
-      if (/Safari\//i.test(ua)) return 'Safari';
-      return 'Unknown';
-    }
-    // ───────────────────────────────────────────────────────────────────────────
-
-    // 거주지역 버튼 구성
+    // 거주지역 버튼
     const regionOptions = ["달서구","달서구외"];
     const regionsEl = document.getElementById('regions');
     let selectedRegion = null;
@@ -162,27 +76,26 @@
       regionsEl.appendChild(b);
     });
 
-    // 연령대 버튼 구성
-    const ageOptions = ["유아","초등","중등","고등","성인"];
-    const agesEl = document.getElementById('ages');
-    let selectedAge = null;
-    ageOptions.forEach(label=>{
+    // 참여인원 버튼 (1~10)
+    const countsEl = document.getElementById('counts');
+    let selectedCount = null;
+    for (let i=1;i<=10;i++){
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'chip';
-      b.textContent = label;
+      b.textContent = String(i);
       b.setAttribute('role','radio');
       b.setAttribute('aria-checked','false');
       b.addEventListener('click',()=>{
-        selectedAge = label;
-        agesEl.querySelectorAll('.chip').forEach(c=>{c.classList.remove('selected');c.setAttribute('aria-checked','false')});
+        selectedCount = i;
+        countsEl.querySelectorAll('.chip').forEach(c=>{c.classList.remove('selected');c.setAttribute('aria-checked','false')});
         b.classList.add('selected');
         b.setAttribute('aria-checked','true');
       });
-      agesEl.appendChild(b);
-    });
+      countsEl.appendChild(b);
+    }
 
-    // 제출 처리
+    // 제출
     const form = document.getElementById('guestbookForm');
     const submitBtn = document.getElementById('submitBtn');
     const ok = document.getElementById('ok');
@@ -193,40 +106,27 @@
       ok.style.display = 'none';
       fail.style.display = 'none';
 
-      if(!selectedRegion){
-        alert('거주지역을 선택해 주세요.');
-        return;
-      }
-      if(!selectedAge){
-        alert('연령대를 선택해 주세요.');
-        return;
-      }
+      if(!selectedRegion){ alert('거주지역을 선택해 주세요.'); return; }
+      if(!selectedCount){ alert('참여인원을 선택해 주세요.'); return; }
 
       submitBtn.disabled = true;
       submitBtn.textContent = '전송 중…';
 
       try{
-        const client = await getClientInfo(); // 간단 요약 정보만 수집
-        // 전송 payload (방문일자/시간은 서버에서 결정)
-        const payload = {
-          region: selectedRegion,
-          age: selectedAge,
-          client // { device, os, browser }
-        };
+        const payload = { region: selectedRegion, count: selectedCount };
 
-        // Apps Script의 CORS 제약을 감안해 no-cors 모드 사용.
         await fetch(GAS_WEBAPP_URL, {
           method: 'POST',
           mode: 'no-cors',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
+
         ok.style.display = 'block';
         form.reset();
         document.querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));
-        // 선택 상태 초기화
         selectedRegion = null;
-        selectedAge = null;
+        selectedCount = null;
       } catch(err){
         console.error(err);
         fail.style.display = 'block';
